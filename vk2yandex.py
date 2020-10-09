@@ -1,6 +1,7 @@
 import requests
 from datetime import date
 import json
+import os
 
 token = '958eb5d439726565e9333aa30e50e0f937ee432e927f0dbd541c541887d919a7c56f95c04217915c32008'
 ver = '5.124'
@@ -41,11 +42,13 @@ if status == 200:
 else:
     print(r.json()['error']['error_msg'])
 
-for photo in photo_list:
-    if like_list.count(photo['likes']) == 1:
-        photo['file_name'] = f'{photo["likes"]}.{photo["url"].split("?")[0].rsplit(".")[-1]}'
-    else:
-        photo['file_name'] = f'{photo["likes"]}_{date.fromtimestamp(photo["date"])}.{photo["url"].split("?")[0].rsplit(".")[-1]}'
+def add_names(photo_list):
+    for photo in photo_list:
+        if like_list.count(photo['likes']) == 1:
+            photo['file_name'] = f'{photo["likes"]}.{photo["url"].split("?")[0].rsplit(".")[-1]}'
+        else:
+            photo['file_name'] = f'{photo["likes"]}_{date.fromtimestamp(photo["date"])}.{photo["url"].split("?")[0].rsplit(".")[-1]}'
+    return photo_list
 
 
 photo_files = []
@@ -62,3 +65,32 @@ for photo in photo_list:
 
 with open('photos.json', 'w', encoding='utf-8') as f:
     json.dump(photo_files, f, indent=2)
+
+
+class YandexHandler:
+    API_URL = 'https://cloud-api.yandex.net/v1/disk/resources'
+
+    def __init__(self, token: str):
+        self.token = token
+
+    def upload(self, file_path: str):
+        """Метод загруджает файл file_path на яндекс диск"""
+        endpoint = '/upload'
+        auth_header = {'Authorization': self.token}
+        kwargs = {'path': '/' + file_path.rsplit(os.path.sep)[-1]}
+        upload_response = requests.get(YandexHandler.API_URL + endpoint, headers=auth_header, params=kwargs)
+        upload_response.raise_for_status()
+        with open(file_path, 'rb') as f:
+            response = requests.put(upload_response.json()['href'], f)
+            response.raise_for_status()
+        return response.status_code
+
+    def create_folder(self, folder=f'/VK_photos_{date.today()}'):
+        """Метод создает папку на яндекс диск. По умолчанию VK_photos+<сегодняшняя дата>"""
+        auth_header = {'Authorization': self.token}
+        kwargs = {'path': folder}
+        r = requests.put(YandexHandler.API_URL, headers=auth_header, params=kwargs)
+        if r.status_code != 201:
+            return r.json()['message']
+        else:
+            return f'Folder {payload["path"]} created'
