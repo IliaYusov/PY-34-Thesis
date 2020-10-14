@@ -5,15 +5,15 @@ import os
 import tqdm
 
 
-class VkHandler:
+class VkAPI:
     API_URL = 'https://api.vk.com/method'
     TOKEN = '958eb5d439726565e9333aa30e50e0f937ee432e927f0dbd541c541887d919a7c56f95c04217915c32008'
     VER = '5.124'
 
     def __init__(self, screen_name: str):
-        self.token = VkHandler.TOKEN
+        self.token = VkAPI.TOKEN
         self.name = screen_name
-        self.ver = VkHandler.VER
+        self.ver = VkAPI.VER
 
     def get_id(self, screen_name):  # проверить screen_name или id
         endpoint = '/utils.resolveScreenName'
@@ -22,7 +22,7 @@ class VkHandler:
             'access_token': self.token,
             'v': self.ver
         }
-        response = requests.get(VkHandler.API_URL + endpoint, params=kwargs)
+        response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
         response.raise_for_status()
         if response.json()['response']:
             return str(response.json()['response']['object_id'])
@@ -38,7 +38,7 @@ class VkHandler:
             'access_token': self.token,
             'v': self.ver
         }
-        response = requests.get(VkHandler.API_URL + endpoint, params=kwargs)
+        response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
         response.raise_for_status()
         photo_list = []
         like_list = []
@@ -61,7 +61,7 @@ class VkHandler:
         return photo_list
 
 
-class YandexHandler:
+class YandexAPI:
     API_URL = 'https://cloud-api.yandex.net/v1/disk/resources'
 
     def __init__(self, token: str):
@@ -72,7 +72,7 @@ class YandexHandler:
         endpoint = '/upload'
         auth_header = {'Authorization': self.token}
         kwargs = {'path': '/' + file_path.rsplit(os.path.sep)[-1]}
-        upload_response = requests.get(YandexHandler.API_URL + endpoint, headers=auth_header, params=kwargs)
+        upload_response = requests.get(YandexAPI.API_URL + endpoint, headers=auth_header, params=kwargs)
         upload_response.raise_for_status()
         response = requests.put(upload_response.json()['href'], data)
         response.raise_for_status()
@@ -82,12 +82,12 @@ class YandexHandler:
         """Метод создает папку на яндекс диск. По умолчанию VK_photos+<сегодняшняя дата>"""
         auth_header = {'Authorization': self.token}
         kwargs = {'path': folder}
-        response = requests.put(YandexHandler.API_URL, headers=auth_header, params=kwargs)
+        response = requests.put(YandexAPI.API_URL, headers=auth_header, params=kwargs)
         response.raise_for_status()
         return f'Folder {kwargs["path"]} created'
 
 
-def write_list_to_file(photo_list: list, yandex_handler: YandexHandler, folder=f'VK_photos_{date.today()}'):
+def write_list_to_file(photo_list: list, yandex_handler: YandexAPI, folder=f'VK_photos_{date.today()}'):
     photo_files = []
     for photo in photo_list:
         response = requests.get(photo['url'])
@@ -102,10 +102,11 @@ def write_list_to_file(photo_list: list, yandex_handler: YandexHandler, folder=f
         json.dump(photo_files, f, indent=2)
 
 
-yandex = YandexHandler('<TOKEN>')
-vk = VkHandler('shadow_tm')
-try:
-    yandex.create_folder()
-    write_list_to_file(vk.get_photo_list(), yandex)
-except requests.HTTPError as http_error:
-    print(http_error)
+if __name__ == '__main__':
+    yandex = YandexAPI('<TOKEN>')
+    vk = VkAPI('shadow_tm')
+    try:
+        yandex.create_folder()
+        write_list_to_file(vk.get_photo_list(), yandex)
+    except requests.HTTPError as http_error:
+        print(http_error)
