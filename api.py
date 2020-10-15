@@ -28,7 +28,7 @@ class VkAPI:
             raise requests.RequestException(response.json()['error']['error_msg'])
         return response.json()['response'][0]['id']
 
-    def get_photo_list(self):
+    def get_photo_list(self, album, max_last_photos):
         """
         получаем список фотографий профиля,
         выбираем максимальные размеры по типу,
@@ -36,9 +36,10 @@ class VkAPI:
         endpoint = '/photos.get'
         kwargs = {
             'owner_id': self.id,
-            'album_id': 'profile',
+            'album_id': album,
             'extended': '1',
             'photo_sizes': '1',
+            'rev': '1',
             'access_token': self.token,
             'v': self.ver
         }
@@ -47,7 +48,7 @@ class VkAPI:
         if 'error' in response.json():
             raise requests.RequestException(response.json()['error']['error_msg'])
         photo_list = []
-        for item in tqdm(response.json()['response']['items'], desc='Getting photos URLs'):
+        for item in tqdm(response.json()['response']['items'], initial=1, desc='Preparing URLs  '):
             max_not_found = True
             for type_ in 'wzyxms':
                 for size in item['sizes']:
@@ -57,6 +58,9 @@ class VkAPI:
                                  'url': size['url'], 'id': item['id']}
                         photo_list.append(photo)
                         break
+            max_last_photos -= 1
+            if max_last_photos == 0:
+                break
         return VkAPI._add_names(photo_list)
 
     @staticmethod
