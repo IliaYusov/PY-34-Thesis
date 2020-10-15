@@ -33,7 +33,7 @@ def write_photos_to_yandex(vk_name, yandex_token, folder=f'VK_photos_{date.today
 
 if __name__ == '__main__':
     try:
-        write_photos_to_yandex('shadow_tm', '<TOKEN>', 'TestFolder', 'wall', 4)
+        write_photos_to_yandex('begemot_korovin', '<TOKEN>')
     except requests.HTTPError as http_error:
         print(http_error)
     except requests.RequestException as requests_error:
