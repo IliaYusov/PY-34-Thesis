@@ -2,15 +2,21 @@ import requests
 from datetime import date
 import os
 from tqdm import tqdm
+from dotenv import load_dotenv
+
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+YANDEX_TOKEN = os.environ.get('YANDEX_TOKEN')
+VK_TOKEN = os.environ.get('VK_TOKEN')
 
 
 class VkAPI:
     API_URL = 'https://api.vk.com/method'
-    TOKEN = '958eb5d439726565e9333aa30e50e0f937ee432e927f0dbd541c541887d919a7c56f95c04217915c32008'
     VER = '5.124'
 
     def __init__(self, name):
-        self.token = VkAPI.TOKEN
+        self.token = VK_TOKEN
         self.ver = VkAPI.VER
         self.id = self.get_id(name)
 
@@ -22,11 +28,16 @@ class VkAPI:
             'access_token': self.token,
             'v': self.ver
         }
-        response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
-        response.raise_for_status()
-        if 'error' in response.json():
-            raise requests.RequestException(response.json()['error']['error_msg'])
-        return response.json()['response'][0]['id']
+        try:
+            response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
+            response.raise_for_status()
+            if 'error' in response.json():
+                raise requests.RequestException(response.json()['error']['error_msg'])
+            return response.json()['response'][0]['id']
+        except requests.HTTPError as http_error:
+            print(http_error)
+        except requests.RequestException as requests_error:
+            print(requests_error)
 
     def get_photo_list(self, album, max_last_photos):
         """
@@ -43,25 +54,35 @@ class VkAPI:
             'access_token': self.token,
             'v': self.ver
         }
-        response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
-        response.raise_for_status()
-        if 'error' in response.json():
-            raise requests.RequestException(response.json()['error']['error_msg'])
-        photo_list = []
-        for item in tqdm(response.json()['response']['items'], initial=1, desc='Preparing URLs  '):
-            max_not_found = True
-            for type_ in 'wzyxms':
-                for size in item['sizes']:
-                    if max_not_found and type_ == size['type']:
-                        max_not_found = False
-                        photo = {'likes': item['likes']['count'], 'date': item['date'], 'type': size['type'],
-                                 'url': size['url'], 'id': item['id']}
-                        photo_list.append(photo)
-                        break
-            max_last_photos -= 1
-            if max_last_photos == 0:
-                break
-        return VkAPI._add_names(photo_list)
+        try:
+            response = requests.get(VkAPI.API_URL + endpoint, params=kwargs)
+            response.raise_for_status()
+            if 'error' in response.json():
+                raise requests.RequestException(response.json()['error']['error_msg'])
+            photo_list = []
+            for item in tqdm(response.json()['response']['items'], initial=1, desc='Preparing URLs  '):
+                max_not_found = True
+                for type_ in 'wzyxms':
+                    for size in item['sizes']:
+                        if max_not_found and type_ == size['type']:
+                            max_not_found = False
+                            photo = {
+                                'likes': item['likes']['count'],
+                                'date': item['date'],
+                                'type': size['type'],
+                                'url': size['url'],
+                                'id': item['id']
+                            }
+                            photo_list.append(photo)
+                            break
+                max_last_photos -= 1
+                if max_last_photos == 0:
+                    break
+            return VkAPI._add_names(photo_list)
+        except requests.HTTPError as http_error:
+            print(http_error)
+        except requests.RequestException as requests_error:
+            print(requests_error)
 
     @staticmethod
     def _add_names(photo_list):
@@ -74,11 +95,11 @@ class VkAPI:
                 file_name = f'{photo["likes"]}_' \
                             f'{date.fromtimestamp(photo["date"])}.' \
                             f'{photo["url"].split("?")[0].rsplit(".")[-1]}'
-            if file_name in names:
-                file_name = f'{photo["likes"]}_' \
-                            f'{date.fromtimestamp(photo["date"])}_' \
-                            f'{photo["id"]}.' \
-                            f'{photo["url"].split("?")[0].rsplit(".")[-1]}'
+                if file_name in names:
+                    file_name = f'{photo["likes"]}_' \
+                                f'{date.fromtimestamp(photo["date"])}_' \
+                                f'{photo["id"]}.' \
+                                f'{photo["url"].split("?")[0].rsplit(".")[-1]}'
             photo['file_name'] = file_name
             names.append(file_name)
         return photo_list
@@ -101,28 +122,60 @@ class YandexAPI:
         507: "Недостаточно свободного места"
     }
 
-    def __init__(self, token: str):
-        self.token = token
+    def __init__(self):
+        self.token = YANDEX_TOKEN
 
     def upload(self, file_path, data):
         """Метод загруджает данные в file_path на яндекс диск"""
         endpoint = '/upload'
         auth_header = {'Authorization': self.token}
         kwargs = {'path': '/' + file_path.rsplit(os.path.sep)[-1]}
-        upload_response = requests.get(YandexAPI.API_URL + endpoint, headers=auth_header, params=kwargs)
-        if upload_response.status_code != 200:
-            return upload_response.status_code
-        response = requests.put(upload_response.json()['href'], data)
-        response.raise_for_status()
-        return response.status_code
+        try:
+            upload_response = requests.get(
+                YandexAPI.API_URL + endpoint,
+                headers=auth_header,
+                params=kwargs
+            )
+            if upload_response.status_code != 200:
+                return upload_response.status_code
+            response = requests.put(upload_response.json()['href'], data)
+            response.raise_for_status()
+            return response.status_code
+        except requests.HTTPError as http_error:
+            print(http_error)
+
+    def upload_photos(self, photo_list, folder):
+        files_list = []
+        log = []
+        for photo in tqdm(photo_list, desc='Uploading photos'):
+            response = requests.get(photo['url'])
+            img = response.content
+            if response.status_code == 200:
+                status_code = self.upload(folder + '/' + photo['file_name'], img)
+                log.append(f'{photo["file_name"]:_<30}{YandexAPI.API_ERRORS[status_code]}')
+                if status_code == 201:
+                    files_list.append({'file_name': photo['file_name'], 'size': photo['type']})
+            else:
+                log.append(
+                    f'{photo["file_name"]:_<30}'
+                    f'{response.text.split("<title>")[1].split("</title>")[0]}'
+                )
+        print(*log, sep='\n')
+        return files_list
 
     def create_folder(self, folder):
         """Метод создает папку на яндекс диск. По умолчанию VK_photos+<сегодняшняя дата>"""
-        auth_header = {'Authorization': self.token}
-        kwargs = {'path': folder}
-        response = requests.put(YandexAPI.API_URL, headers=auth_header, params=kwargs)
-        response.raise_for_status()
-        return f'Folder {kwargs["path"]} created'
+        if not self.object_exist(folder):
+            auth_header = {'Authorization': self.token}
+            kwargs = {'path': folder}
+            try:
+                response = requests.put(YandexAPI.API_URL, headers=auth_header, params=kwargs)
+                response.raise_for_status()
+                print(f'Folder {kwargs["path"]} created')
+            except requests.HTTPError as http_error:
+                print(http_error)
+        else:
+            print(f'{folder} folder already exists')
 
     def object_exist(self, path):
         """Метод возвращает True, если объект уже существует"""
